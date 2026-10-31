@@ -1,0 +1,8 @@
+title = "auth-gateway"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "The README quick start uses a fixed, public development-only credential."
+regexes = ['''development-user:dev-password''']
