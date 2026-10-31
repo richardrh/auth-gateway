@@ -152,3 +152,11 @@ single-line console logger.
 - Multiple replicas must share `DataProtection:KeysPath` (a shared volume), or sessions break across pods.
 - Behind an ingress set `ForwardedHeaders:Enabled=true` and list the ingress in `KnownProxies`/`KnownNetworks`.
 - Supply secrets (`AzureAdWeb:ClientSecret`, `IdentityAssertion:Keys:*`, `ServiceTokens:*`) as environment variables.
+- TLS ends at the ingress. Cookies are `Secure`-only, so without `ForwardedHeaders` a browser request over plain HTTP
+  fails at the proxy step with an antiforgery "not an SSL request" error.
+- Data Protection keys are written to `DataProtection:KeysPath` unencrypted (the framework logs "No XML encryptor
+  configured"). Protect that volume as you would a secret; anyone who can read it can forge session cookies.
+- Sessions live in the cookie, so `/auth/logout` clears it but does not revoke a copy that was already stolen; it stays
+  valid until it expires (8 hours of inactivity).
+- Failed bearer validation is logged at Information by `Microsoft.AspNetCore.Authentication.JwtBearer`, which the default
+  `Logging:LogLevel` hides. Set `Logging__LogLevel__Microsoft.AspNetCore.Authentication=Information` to see why tokens are rejected.

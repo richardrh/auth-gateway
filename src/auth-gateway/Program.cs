@@ -112,7 +112,7 @@ authentication.AddMicrosoftIdentityWebApiAot(
         options.Audience = api["Audience"];
     },
     JwtBearerDefaults.AuthenticationScheme,
-    configureJwtBearerOptions: null);
+    configureJwtBearerOptions: options => options.TokenValidationParameters.ValidAudiences = GatewayAuth.ValidAudiences(api));
 authentication.AddPolicyScheme(GatewayAuth.Scheme, null, options =>
     options.ForwardDefaultSelector = context => GatewayAuth.SelectScheme(context, development is not null));
 if (development is not null)
@@ -132,8 +132,10 @@ builder.Services.AddAuthorization(options =>
         .RequireAuthenticatedUser()
         .RequireAssertion(context => context.Resource is not HttpContext { Request.Headers.Authorization.Count: > 0 }
             || GatewayAuth.HasScope(context.User, requiredScope)));
+    // The development scheme exists only when development auth is enabled; naming an unregistered scheme throws.
+    string[] grpcSchemes = development is null ? [JwtBearerDefaults.AuthenticationScheme] : [JwtBearerDefaults.AuthenticationScheme, DevelopmentUser.Scheme];
     options.AddPolicy(Policies.AuthenticatedGrpcProxy, policy => policy
-        .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme, DevelopmentUser.Scheme)
+        .AddAuthenticationSchemes(grpcSchemes)
         .RequireAuthenticatedUser()
         .RequireAssertion(context => GatewayAuth.HasScope(context.User, requiredScope)));
 });

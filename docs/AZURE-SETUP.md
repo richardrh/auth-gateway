@@ -66,6 +66,9 @@ Under **Expose an API**:
 `AzureAdApi:Audience` must equal `<api-app-id-uri>`, while
 `AzureAdApi:RequiredScope` is only the unqualified name `access_as_user`.
 
+A bearer token is accepted when its `aud` is `AzureAdApi:ClientId` (version 2 access tokens) or
+`AzureAdApi:Audience` (version 1 access tokens); any other audience returns `401`.
+
 Do not add application permissions/app roles for machine access yet. The gateway
 requires the delegated `scp` claim and would reject an app-only token. Entra app
 roles may still be designed for downstream business authorization; the gateway

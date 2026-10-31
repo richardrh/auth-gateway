@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.Options;
+using Microsoft.Identity.Web;
 using Yarp.ReverseProxy.Model;
 
 namespace AuthGateway;
@@ -40,9 +41,23 @@ internal static class GatewayAuth
             && value.StartsWith("Bearer", StringComparison.OrdinalIgnoreCase)
             && (value.Length == "Bearer".Length || char.IsWhiteSpace(value["Bearer".Length])));
 
-    /// <summary>Whether the token's <c>scp</c> claim contains the scope.</summary>
+    /// <summary>
+    /// Whether the token's scope claim contains the scope. The JwtBearer handler maps the token's <c>scp</c>
+    /// to its long claim URI by default, while the development scheme emits <c>scp</c>, so both are read.
+    /// </summary>
     public static bool HasScope(ClaimsPrincipal user, string scope) =>
-        user.FindAll("scp").Any(claim => claim.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(scope, StringComparer.Ordinal));
+        user.FindAll(ClaimConstants.Scp).Concat(user.FindAll(ClaimConstants.Scope))
+            .Any(claim => claim.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(scope, StringComparer.Ordinal));
+
+    /// <summary>
+    /// The audiences a bearer token may carry: the API's client ID (v2 access tokens) and its configured
+    /// <c>Audience</c>, the App ID URI (v1 access tokens). Nothing else is accepted.
+    /// </summary>
+    public static string[] ValidAudiences(IConfigurationSection api) =>
+        [.. new[] { api["ClientId"], api["Audience"] }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .Distinct(StringComparer.Ordinal)];
 
     public static bool IsLocalReturnUrl(string? returnUrl) => RedirectHttpResult.IsLocalUrl(returnUrl);
 

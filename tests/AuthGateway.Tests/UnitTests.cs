@@ -142,4 +142,20 @@ public sealed class AuthenticationTests
         Assert.False(GatewayAuth.HasScope(user, "access"));
         Assert.False(GatewayAuth.HasScope(new ClaimsPrincipal(new ClaimsIdentity()), "access_as_user"));
     }
+
+    [Theory]
+    [InlineData("c1", "api://c1", new[] { "c1", "api://c1" })]
+    [InlineData("c1", "c1", new[] { "c1" })]
+    [InlineData("c1", " api://c1 ", new[] { "c1", "api://c1" })]
+    [InlineData("c1", "", new[] { "c1" })]
+    [InlineData(null, "api://c1", new[] { "api://c1" })]
+    public void BearerTokensMayCarryOnlyTheApiClientIdOrTheConfiguredAudience(string? clientId, string? audience, string[] expected)
+    {
+        IConfigurationSection api = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["AzureAdApi:ClientId"] = clientId, ["AzureAdApi:Audience"] = audience })
+            .Build()
+            .GetSection("AzureAdApi");
+
+        Assert.Equal(expected, GatewayAuth.ValidAudiences(api));
+    }
 }
