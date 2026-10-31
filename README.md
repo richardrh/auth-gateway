@@ -160,3 +160,45 @@ single-line console logger.
   valid until it expires (8 hours of inactivity).
 - Failed bearer validation is logged at Information by `Microsoft.AspNetCore.Authentication.JwtBearer`, which the default
   `Logging:LogLevel` hides. Set `Logging__LogLevel__Microsoft.AspNetCore.Authentication=Information` to see why tokens are rejected.
+
+## Kubernetes manifests
+
+`deploy/kubernetes` is a kustomize base: a Deployment, a Service (80 for HTTP, 81 for gRPC), a PVC for the Data
+Protection keys, and an empty profile ConfigMap. The pod runs as UID 1654 with a read-only root filesystem, all
+capabilities dropped and the default seccomp profile, and pauses 5 s in `preStop` so the Service stops routing to it
+before it refuses connections.
+
+Configuration reaches the pod three ways, and every key is an environment variable name:
+
+| Resource | Holds | Required |
+| --- | --- | --- |
+| ConfigMap `auth-gateway-env` | plain settings: `AzureAdWeb__TenantId`, `AzureAdApi__Audience`, `ForwardedHeaders__Enabled`, `ReverseProxy__Clusters__<id>__Destinations__<name>__Address` | no |
+| Secret `auth-gateway-secrets` | `AzureAdWeb__ClientSecret`, `IdentityAssertion__Keys__<id>`, `ServiceTokens__<Name>` | yes |
+| ConfigMap `auth-gateway-profile` | the deployment profile mounted at `GATEWAY_CONFIG_FILE` (routes, header names) | defaults to no routes |
+
+An overlay supplies them and points the image at your registry:
+
+```yaml
+resources: [../../base]            # this directory
+images:
+  - name: auth-gateway
+    newName: registry.example.com/auth-gateway
+    newTag: "1.0.0"
+configMapGenerator:
+  - name: auth-gateway-profile
+    behavior: replace
+    files: [gateway.json=my-profile.json]
+  - name: auth-gateway-env
+    literals: [AzureAdWeb__TenantId=..., AzureAdApi__Audience=...]
+secretGenerator:
+  - name: auth-gateway-secrets
+    literals: [AzureAdWeb__ClientSecret=..., IdentityAssertion__Keys__primary=...]
+```
+
+Generated names carry a content hash, so changing any of them rolls the pods. A bad value (for example a blank
+client secret) makes the new pod fail at startup with the setting named; the old pod keeps serving and the rollout
+stalls instead of taking the gateway down.
+
+The PVC is `ReadWriteOnce`, which is enough for replicas on one node. Use a `ReadWriteMany` volume when they run on
+several, since every replica must read the same key ring. Behind an ingress, set `ForwardedHeaders__Enabled=true` and
+list the pod network and ingress in `ForwardedHeaders__KnownNetworks__<n>`.

@@ -1,0 +1,137 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-gateway
+  labels:
+    app.kubernetes.io/name: auth-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: auth-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: auth-gateway
+    spec:
+      automountServiceAccountToken: false
+      # Longer than the gateway's 30 s shutdown timeout, plus the preStop pause below.
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: auth-gateway
+          image: auth-gateway
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: grpc
+              containerPort: 8082
+          env:
+            # Fixed by the volumes below, so they win over envFrom.
+            - name: GATEWAY_CONFIG_FILE
+              value: /etc/auth-gateway/gateway.json
+            - name: DataProtection__KeysPath
+              value: /var/lib/auth-gateway/keys
+          envFrom:
+            # Plain settings as environment variables, e.g. AzureAdWeb__TenantId or
+            # ReverseProxy__Clusters__api__Destinations__main__Address.
+            - configMapRef:
+                name: auth-gateway-env
+                optional: true
+            # Secrets in the same form: AzureAdWeb__ClientSecret, IdentityAssertion__Keys__<id>, ServiceTokens__<Name>.
+            - secretRef:
+                name: auth-gateway-secrets
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+          lifecycle:
+            preStop:
+              # Let the Service stop routing here before the gateway starts refusing connections.
+              sleep:
+                seconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: profile
+              mountPath: /etc/auth-gateway
+              readOnly: true
+            - name: keys
+              mountPath: /var/lib/auth-gateway/keys
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: profile
+          configMap:
+            name: auth-gateway-profile
+        - name: keys
+          persistentVolumeClaim:
+            claimName: auth-gateway-keys
+        - name: tmp
+          emptyDir: {}
+---
+# Data Protection keys: they encrypt the session cookie, so they must survive restarts and be shared by every
+# replica. Use ReadWriteMany (or a shared volume) when replicas run on different nodes.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: auth-gateway-keys
+  labels:
+    app.kubernetes.io/name: auth-gateway
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-gateway
+  labels:
+    app.kubernetes.io/name: auth-gateway
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: auth-gateway
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+    - name: grpc
+      port: 81
+      targetPort: grpc
+      appProtocol: kubernetes.io/h2c
