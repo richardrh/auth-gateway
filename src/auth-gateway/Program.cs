@@ -29,6 +29,7 @@ IConfigurationSection api = config.GetSection("AzureAdApi");
 string requiredScope = api["RequiredScope"] ?? string.Empty;
 
 IDataProtectionBuilder dataProtection = builder.Services.AddDataProtection().SetApplicationName("auth-gateway");
+bool keysEncrypted = false;
 if (!isDevelopment)
 {
     string[] missing = [.. GatewayAuth.RequiredEntraSettings.Where(key => string.IsNullOrWhiteSpace(config[key]))];
@@ -37,10 +38,7 @@ if (!isDevelopment)
         throw new InvalidOperationException($"Invalid Azure AD configuration: {string.Join(", ", missing)}.");
     }
 
-    string keys = config["DataProtection:KeysPath"] ?? string.Empty;
-    _ = Path.IsPathFullyQualified(keys)
-        ? dataProtection.PersistKeysToFileSystem(Directory.CreateDirectory(keys))
-        : throw new InvalidOperationException("Invalid configuration: DataProtection:KeysPath.");
+    keysEncrypted = KeyRing.Configure(dataProtection, config);
 }
 
 bool forwarded = config.GetValue<bool>("ForwardedHeaders:Enabled");
@@ -141,6 +139,10 @@ builder.Services.AddAuthorization(options =>
 });
 
 WebApplication app = builder.Build();
+if (!isDevelopment && !keysEncrypted)
+{
+    KeyRing.LogUnencrypted(app.Logger);
+}
 
 app.UseMiddleware<AccessLog>();
 if (forwarded)

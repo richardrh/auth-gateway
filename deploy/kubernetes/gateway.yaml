@@ -92,6 +92,9 @@ spec:
               mountPath: /var/lib/auth-gateway/keys
             - name: tmp
               mountPath: /tmp
+            - name: key-protection
+              mountPath: /etc/key-protection
+              readOnly: true
       volumes:
         - name: profile
           configMap:
@@ -101,6 +104,12 @@ spec:
             claimName: auth-gateway-keys
         - name: tmp
           emptyDir: {}
+        # Optional PKCS#12 file that encrypts the key ring at rest (README, Session keys). Create the Secret with a
+        # `keys.pfx` key and set DataProtection__CertificateFile=/etc/key-protection/keys.pfx.
+        - name: key-protection
+          secret:
+            secretName: auth-gateway-key-protection
+            optional: true
 ---
 # Data Protection keys: they encrypt the session cookie, so they must survive restarts and be shared by every
 # replica. Use ReadWriteMany (or a shared volume) when replicas run on different nodes.
