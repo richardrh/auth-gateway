@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Identity.Web;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 ConfigurationManager config = builder.Configuration;
@@ -94,6 +95,8 @@ authentication.AddOpenIdConnect(OpenIdConnectDefaults.AuthenticationScheme, opti
     options.Authority = $"{web["Instance"]?.TrimEnd('/')}/{web["TenantId"]}/v2.0";
     options.ClientId = web["ClientId"];
     options.ClientSecret = web["ClientSecret"] ?? string.Empty;
+    // Authorization code with PKCE (UsePkce defaults to true). The setup guide forbids implicit/ID-token grants.
+    options.ResponseType = OpenIdConnectResponseType.Code;
     options.CallbackPath = web["CallbackPath"];
     options.SignedOutCallbackPath = web["SignedOutCallbackPath"];
     options.TokenValidationParameters.ValidateIssuer = true;
