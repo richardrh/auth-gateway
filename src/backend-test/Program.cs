@@ -1,41 +1,20 @@
+// Demo backend for the quick start. It answers every method and path with the request as it arrived, so you can
+// see what the gateway forwards: the signed identity assertion is added and the caller's credentials are gone.
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 WebApplication app = builder.Build();
 
-const int ServiceAPort = 5013;
-const int ServiceBPort = 5014;
-
-app.MapGet("/a", HandleServiceA);
-app.MapGet("/b", HandleServiceB);
-
-app.Run();
-
-static IResult HandleServiceA(HttpContext context)
-{
-    return Respond(context, ServiceAPort, "service-a");
-}
-
-static IResult HandleServiceB(HttpContext context)
-{
-    return Respond(context, ServiceBPort, "service-b");
-}
-
-static IResult Respond(HttpContext context, int expectedPort, string service)
-{
-    if (context.Connection.LocalPort != expectedPort)
-    {
-        return Results.NotFound();
-    }
-
-    string requestId = context.Request.Headers["Request-ID"].ToString();
-    return Results.Ok(
+app.Map(
+    "/{**path}",
+    (HttpContext context) => Results.Ok(
         new
         {
-            service,
+            service = context.Connection.LocalPort == 5014 ? "service-b" : "service-a",
             localPort = context.Connection.LocalPort,
             method = context.Request.Method,
             path = context.Request.Path.Value,
-            host = context.Request.Host.Value,
-            requestId = string.IsNullOrWhiteSpace(requestId) ? null : requestId,
+            headers = context.Request.Headers.ToDictionary(header => header.Key, header => header.Value.ToString()),
         }
-    );
-}
+    )
+);
+
+app.Run();

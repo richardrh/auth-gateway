@@ -23,7 +23,8 @@ RUN architecture="$TARGETARCH"; [ "$architecture" != "amd64" ] || architecture="
         --output /app/jit
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS jit
-LABEL org.opencontainers.image.title="auth-gateway"
+LABEL org.opencontainers.image.title="auth-gateway" \
+      org.opencontainers.image.description="Microsoft Entra authentication gateway: signs people and programs in and forwards requests with a short-lived signed identity assertion."
 WORKDIR /app
 ENV DOTNET_ENVIRONMENT=Production \
     Kestrel__Endpoints__Http__Url=http://0.0.0.0:8080 \

@@ -16,31 +16,33 @@ Request flow:
 
 ## Quick start
 
+Needs the .NET 10 SDK. The demo backend echoes every request it receives, so you can see what the gateway forwards.
+
 ```bash
-cd src/auth-gateway
+# terminal 1: demo backend on http://localhost:5013
+dotnet run --project src/backend-test
+
+# terminal 2: the gateway on http://localhost:5295, using development credentials instead of Entra
 ASPNETCORE_ENVIRONMENT=Development \
 DevelopmentAuth__Enabled=true DevelopmentAuth__Password=dev-password \
 DevelopmentAuth__TenantId=00000000-0000-0000-0000-000000000001 \
 DevelopmentAuth__ObjectId=00000000-0000-0000-0000-000000000002 \
-GATEWAY_CONFIG_FILE=/path/to/gateway.json \
-dotnet run
+GATEWAY_CONFIG_FILE=$PWD/examples/quickstart.json \
+dotnet run --project src/auth-gateway
+
+# terminal 3
+curl -u development-user:dev-password http://localhost:5295/app/hello
+curl -u development-user:dev-password -H "Request-ID: $(uuidgen)" http://localhost:5295/api/hello
 ```
 
-`appsettings.Development.json` already supplies an assertion audience and key. A minimal profile with one
-browser route and one API route:
+The backend's reply lists its request headers. `Authorization` is gone, and `Identity-Assertion` holds the
+short-lived signed token that tells the backend who called. Programs must send a `Request-ID` (the second call);
+browser routes get one assigned.
 
-```json
-{
-  "Gateway": { "AssertionHeader": "Identity-Assertion", "Home": "/app" },
-  "ReverseProxy": {
-    "Routes": {
-      "app-route": { "ClusterId": "backend", "AuthorizationPolicy": "BrowserUser", "Match": { "Path": "/app/{**catch-all}" } },
-      "api-route": { "ClusterId": "backend", "AuthorizationPolicy": "AuthenticatedProxy", "Match": { "Path": "/api/{**catch-all}" } }
-    },
-    "Clusters": { "backend": { "Destinations": { "main": { "Address": "http://localhost:5013/" } } } }
-  }
-}
-```
+`appsettings.Development.json` supplies an assertion audience and key for local use. The routes live in
+[`examples/quickstart.json`](examples/quickstart.json): one browser route (`BrowserUser`) and one API route
+(`AuthenticatedProxy`) in front of one cluster. `DevelopmentAuth` only works in the Development environment; real
+deployments use the `AzureAdWeb` and `AzureAdApi` settings below.
 
 ## Gateway endpoints
 
