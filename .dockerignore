@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+.git/
+.gitignore
+.vscode/
+.idea/
+*.user
+*.suo
+*.swp
+.DS_Store
+README.md

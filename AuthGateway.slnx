@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/auth-gateway/">
+    <Project Path="src/auth-gateway/AuthGateway.csproj" />
+  </Folder>
+  <Folder Name="/src/backend-test/">
+    <Project Path="src/backend-test/Backend.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AuthGateway.Tests/AuthGateway.Tests.csproj" />
+  </Folder>
+</Solution>
