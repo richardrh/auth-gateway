@@ -44,6 +44,30 @@ public sealed class StartupTests
     }
 
     [Fact]
+    public void OutsideDevelopmentTheKeyCertificateIsRequired()
+    {
+        string keys = Directory.CreateTempSubdirectory("startup-keys-").FullName;
+        try
+        {
+            string message = Failure(new Gateway(s =>
+            {
+                s["DevelopmentAuth:Enabled"] = null;
+                foreach (string key in GatewayAuth.RequiredEntraSettings)
+                {
+                    s[key] = key.EndsWith("TenantId", StringComparison.Ordinal) ? Guid.NewGuid().ToString() : "value";
+                }
+                s["DataProtection:KeysPath"] = keys;
+            }, environment: "Production"));
+
+            Assert.Contains("Invalid configuration: DataProtection:CertificateFile.", message);
+        }
+        finally
+        {
+            Directory.Delete(keys, recursive: true);
+        }
+    }
+
+    [Fact]
     public void DevelopmentAuthIsRefusedOutsideDevelopment()
     {
         Assert.Contains("DevelopmentAuth", Failure(new Gateway(environment: "Production")));

@@ -200,8 +200,9 @@ exactly match the HTTPS URI registered in Entra.
 
 Persist ASP.NET Core Data Protection keys at the configured absolute
 `DataProtection:KeysPath`, retain old key files, and share them across replicas.
-Losing or isolating these keys invalidates browser sessions and OIDC state. They can also forge any session, so
-encrypt them at rest with `DataProtection:CertificateFile` (see the README, Session keys).
+Losing or isolating these keys invalidates browser sessions and OIDC state. They can also forge any session, so the
+gateway refuses to start without `DataProtection:CertificateFile`, a PKCS#12 file that encrypts them at rest (see the
+README, Session keys).
 
 ## 6. Production verification
 

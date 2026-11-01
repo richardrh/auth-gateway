@@ -69,16 +69,6 @@ public sealed class KeyRingTests : IDisposable
     }
 
     [Fact]
-    public void WithoutACertificateTheKeysAreReportedAsUnencrypted()
-    {
-        (IDataProtectionProvider provider, bool encrypted) = Open(Settings(null));
-        _ = provider.CreateProtector("cookie").Protect("session");
-        Assert.All(KeyFiles(), xml => Assert.Contains("<value>", xml));
-
-        Assert.False(encrypted);
-    }
-
-    [Fact]
     public void AnotherCertificateCannotReadTheKeys()
     {
         string protectedValue = Open(Settings(Certificate("owner"))).Provider.CreateProtector("cookie").Protect("session");
@@ -101,6 +91,7 @@ public sealed class KeyRingTests : IDisposable
     }
 
     [Theory]
+    [InlineData("unset")]
     [InlineData("missing")]
     [InlineData("relative")]
     [InlineData("no-private-key")]
@@ -109,6 +100,7 @@ public sealed class KeyRingTests : IDisposable
     {
         Dictionary<string, string?> settings = Settings(problem switch
         {
+            "unset" => null,
             "missing" => Path.Combine(directory, "absent.pfx"),
             "relative" => "keys.pfx",
             "no-private-key" => Certificate("public-only", withPrivateKey: false),
@@ -122,6 +114,7 @@ public sealed class KeyRingTests : IDisposable
         InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => Open(settings));
 
         Assert.Equal("Invalid configuration: DataProtection:CertificateFile.", error.Message);
+        Assert.False(Directory.Exists(Keys), "no key directory is created for a gateway that cannot encrypt its keys");
     }
 
     [Fact]
@@ -133,23 +126,14 @@ public sealed class KeyRingTests : IDisposable
         Assert.Equal("Invalid configuration: DataProtection:PreviousCertificateFiles:0.", error.Message);
     }
 
-    // A gateway that lost its certificate setting must not carry on and add a plaintext key beside encrypted ones.
-    [Fact]
-    public void ARingOfEncryptedKeysCannotBeOpenedWithoutTheCertificate()
-    {
-        _ = Open(Settings(Certificate("owner"))).Provider.CreateProtector("cookie").Protect("session");
-
-        InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => Open(Settings(null)));
-
-        Assert.Equal("Invalid configuration: DataProtection:CertificateFile is required because DataProtection:KeysPath holds encrypted keys.", error.Message);
-        Assert.All(KeyFiles(), xml => Assert.Contains("EncryptedData", xml));
-    }
-
-    // Turning encryption on leaves the old plaintext key on disk, so the ring is not yet encrypted at rest.
+    // Turning encryption on leaves the old plaintext key on disk, and it stays in use, so the ring is not yet
+    // encrypted at rest even though new keys would be.
     [Fact]
     public void PlaintextKeysLeftFromBeforeEncryptionAreReportedAndStillWork()
     {
-        string protectedValue = Open(Settings(null)).Provider.CreateProtector("cookie").Protect("session");
+        ServiceCollection plain = new();
+        _ = plain.AddDataProtection().SetApplicationName("key-ring-tests").PersistKeysToFileSystem(Directory.CreateDirectory(Keys));
+        string protectedValue = plain.BuildServiceProvider().GetRequiredService<IDataProtectionProvider>().CreateProtector("cookie").Protect("session");
 
         (IDataProtectionProvider upgraded, bool encrypted) = Open(Settings(Certificate("owner")));
 

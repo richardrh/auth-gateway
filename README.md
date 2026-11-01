@@ -118,7 +118,7 @@ the `CookieHeaders` header names, and `StripHeaders`.
 | `AzureAdApi` | `Instance`, `TenantId`, `ClientId`, `Audience`, `RequiredScope` (bearer validation). Entra keys are required outside Development. |
 | `IdentityAssertion` | `Issuer`, `Audience`, `CurrentKeyId`, `LifetimeSeconds`, `Keys:{kid}` |
 | `ForwardedHeaders` | `Enabled`, `ForwardLimit` (default 1), `KnownProxies[]`, `KnownNetworks[]` (middleware runs only when enabled) |
-| `DataProtection` | `KeysPath`: absolute directory for the session key ring, required outside Development. `CertificateFile`, `CertificatePassword`, `PreviousCertificateFiles[]`: encrypt that ring at rest (see Session keys) |
+| `DataProtection` | `KeysPath`: absolute directory for the session key ring. `CertificateFile`, `CertificatePassword`: PKCS#12 file that encrypts it. `PreviousCertificateFiles[]`: certificates retired by a rotation. All required outside Development (see Session keys) |
 | `ServiceTokens` | `{Name}`: tokens for `ServiceToken` routes |
 | `DevelopmentAuth` | `Enabled`, `Username` (default `development-user`), `Password`, `TokenFile`, `TenantId`, `ObjectId` |
 | `Logging:LogLevel` | Standard levels; `AuthGateway.AccessLog` gates access records |
@@ -152,7 +152,8 @@ single-line console logger.
 
 The session cookie is encrypted and signed with keys from the ASP.NET Core Data Protection key ring, stored as XML in
 `DataProtection:KeysPath`. Anyone who can read those keys can decrypt any session or forge one for any user and role,
-so treat them like the assertion key. Set `DataProtection:CertificateFile` to encrypt the ring at rest:
+so outside Development the gateway encrypts the ring at rest and will not start without a certificate in
+`DataProtection:CertificateFile`. Create one (any RSA key in a PKCS#12 file works):
 
 ```bash
 openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 3650 -subj "/CN=auth-gateway-keys"
@@ -161,17 +162,18 @@ openssl pkcs12 -export -inkey key.pem -in cert.pem -out keys.pfx -passout pass:<
 
 Mount `keys.pfx` read-only and set `DataProtection__CertificateFile` (an absolute path) and
 `DataProtection__CertificatePassword` (from a secret). The certificate only wraps the keys; it is not used for TLS.
+Development keeps its keys in memory, so it needs neither.
 
-- Without a certificate the keys are plain XML and startup logs a warning.
-- An unusable certificate stops startup with `Invalid configuration: DataProtection:CertificateFile.` (the message never
-  contains the path or the password).
-- Once the directory holds encrypted keys, the gateway refuses to start without the certificate. Otherwise a replica
-  with the setting missing would ignore the encrypted keys and add a plaintext one to the same ring.
-- Turning encryption on leaves existing plaintext key files in place, and the startup warning continues until you
-  delete them. Deleting them signs everyone out.
+- A missing or unusable certificate stops startup with `Invalid configuration: DataProtection:CertificateFile.` (the
+  message never contains the path or the password).
+- Upgrading an existing deployment: encryption applies to new keys only. Plaintext key files already in `KeysPath`
+  stay in use until they expire, and startup logs a warning while any remain. Delete them to finish; that signs
+  everyone out once.
 - To rotate, point `CertificateFile` at the new certificate and list the old one under `PreviousCertificateFiles`
   (same password). Earlier keys stay readable and new keys use the new certificate. Drop the old one once its keys
   have expired (keys last 90 days).
+- Encryption protects a copied volume or backup. It does not help against a compromised gateway pod, which holds the
+  certificate and the decrypted keys. Keep the certificate Secret separate from the keys volume.
 
 ## Docker and Kubernetes
 
@@ -181,8 +183,7 @@ Mount `keys.pfx` read-only and set `DataProtection__CertificateFile` (an absolut
 - Supply secrets (`AzureAdWeb:ClientSecret`, `IdentityAssertion:Keys:*`, `ServiceTokens:*`) as environment variables.
 - TLS ends at the ingress. Cookies are `Secure`-only, so without `ForwardedHeaders` a browser request over plain HTTP
   fails at the proxy step with an antiforgery "not an SSL request" error.
-- The session key ring is plain XML unless `DataProtection:CertificateFile` is set; see Session keys. Treat the volume as
-  a secret either way.
+- Session keys are encrypted at rest with a certificate that is required outside Development; see Session keys.
 - Sessions live in the cookie, so `/auth/logout` clears it but does not revoke a copy that was already stolen; it stays
   valid until it expires (8 hours of inactivity).
 - Failed bearer validation is logged at Information by `Microsoft.AspNetCore.Authentication.JwtBearer`, which the default
@@ -201,6 +202,7 @@ Configuration reaches the pod three ways, and every key is an environment variab
 | --- | --- | --- |
 | ConfigMap `auth-gateway-env` | plain settings: `AzureAdWeb__TenantId`, `AzureAdApi__Audience`, `ForwardedHeaders__Enabled`, `ReverseProxy__Clusters__<id>__Destinations__<name>__Address` | no |
 | Secret `auth-gateway-secrets` | `AzureAdWeb__ClientSecret`, `IdentityAssertion__Keys__<id>`, `ServiceTokens__<Name>` | yes |
+| Secret `auth-gateway-key-protection` | `keys.pfx` and `password`: the certificate that encrypts the session key ring | yes |
 | ConfigMap `auth-gateway-profile` | the deployment profile mounted at `GATEWAY_CONFIG_FILE` (routes, header names) | defaults to no routes |
 
 An overlay supplies them and points the image at your registry:
@@ -220,6 +222,9 @@ configMapGenerator:
 secretGenerator:
   - name: auth-gateway-secrets
     literals: [AzureAdWeb__ClientSecret=..., IdentityAssertion__Keys__primary=...]
+  - name: auth-gateway-key-protection
+    files: [keys.pfx]                # see Session keys
+    literals: [password=...]
 ```
 
 Generated names carry a content hash, so changing any of them rolls the pods. A bad value (for example a blank

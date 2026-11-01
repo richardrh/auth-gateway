@@ -40,6 +40,13 @@ spec:
               value: /etc/auth-gateway/gateway.json
             - name: DataProtection__KeysPath
               value: /var/lib/auth-gateway/keys
+            - name: DataProtection__CertificateFile
+              value: /etc/key-protection/keys.pfx
+            - name: DataProtection__CertificatePassword
+              valueFrom:
+                secretKeyRef:
+                  name: auth-gateway-key-protection
+                  key: password
           envFrom:
             # Plain settings as environment variables, e.g. AzureAdWeb__TenantId or
             # ReverseProxy__Clusters__api__Destinations__main__Address.
@@ -104,12 +111,11 @@ spec:
             claimName: auth-gateway-keys
         - name: tmp
           emptyDir: {}
-        # Optional PKCS#12 file that encrypts the key ring at rest (README, Session keys). Create the Secret with a
-        # `keys.pfx` key and set DataProtection__CertificateFile=/etc/key-protection/keys.pfx.
+        # PKCS#12 certificate that encrypts the key ring at rest (README, Session keys). Create the Secret with a
+        # `keys.pfx` entry and a `password` entry; the gateway will not start without it.
         - name: key-protection
           secret:
             secretName: auth-gateway-key-protection
-            optional: true
 ---
 # Data Protection keys: they encrypt the session cookie, so they must survive restarts and be shared by every
 # replica. Use ReadWriteMany (or a shared volume) when replicas run on different nodes.
