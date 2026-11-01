@@ -7,6 +7,7 @@
     <Project Path="src/backend-test/Backend.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/AuthGateway.E2E/AuthGateway.E2E.csproj" />
     <Project Path="tests/AuthGateway.Tests/AuthGateway.Tests.csproj" />
   </Folder>
 </Solution>

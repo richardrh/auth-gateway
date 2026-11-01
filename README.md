@@ -235,6 +235,21 @@ The PVC is `ReadWriteOnce`, which is enough for replicas on one node. Use a `Rea
 several, since every replica must read the same key ring. Behind an ingress, set `ForwardedHeaders__Enabled=true` and
 list the pod network and ingress in `ForwardedHeaders__KnownNetworks__<n>`.
 
+## Tests
+
+`dotnet test AuthGateway.slnx` runs two suites, with no Azure tenant, containers or network access needed.
+
+- `tests/AuthGateway.Tests`: the gateway in-process (`WebApplicationFactory`), mostly in Development mode.
+- `tests/AuthGateway.E2E`: the gateway as a real Production process (`dotnet AuthGateway.dll`, real Kestrel, real
+  configuration) talking to `FakeEntra`, an in-process stand-in for Microsoft Entra served over HTTPS. It covers the
+  browser sign-in (authorization code with PKCE, token exchange, session cookie), bearer tokens (scope, audience,
+  issuer, expiry, signature), the signed assertion a backend receives, the encrypted key ring surviving a restart, and
+  refused startups. `FakeEntra` rejects a wrong response type, redirect URI or PKCE verifier, so a gateway that gets
+  the protocol wrong fails here. A failing assertion prints the gateway's own log.
+
+What the fake cannot show is how real Entra behaves: tenant-specific claims, consent, conditional access, token
+lifetimes. Run through `docs/AZURE-SETUP.md` against a development tenant before relying on a new deployment.
+
 ## Releases
 
 Pushing a tag such as `v1.2.3` runs the tests, builds `linux/amd64` and `linux/arm64` images, publishes them to
