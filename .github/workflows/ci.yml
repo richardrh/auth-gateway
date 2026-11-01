@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+  schedule:
+    # New advisories appear without any code change, so the dependency scan also runs weekly.
+    - cron: "17 5 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+      - run: dotnet test AuthGateway.slnx --configuration Release --nologo
+
+  vulnerable-packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore AuthGateway.slnx
+      - name: Fail on known vulnerabilities, direct or transitive
+        run: |
+          report=$(dotnet list AuthGateway.slnx package --vulnerable --include-transitive)
+          printf '%s\n' "$report"
+          if grep -q "has the following vulnerable packages" <<<"$report"; then
+            exit 1
+          fi
+
+  secrets:
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          curl -sSfL -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum --check
+          tar -xzf gitleaks.tar.gz gitleaks
+      - name: Scan the full history
+        run: ./gitleaks git --no-banner --redact .
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: docker build --target final --tag auth-gateway:ci .
+      - name: Start in Development and wait for the health endpoint
+        run: |
+          docker run --detach --name gateway --publish 8080:8080 \
+            --env DOTNET_ENVIRONMENT=Development \
+            --env DevelopmentAuth__Enabled=true --env DevelopmentAuth__Password=dev-password \
+            --env DevelopmentAuth__TenantId=00000000-0000-0000-0000-000000000001 \
+            --env DevelopmentAuth__ObjectId=00000000-0000-0000-0000-000000000002 \
+            auth-gateway:ci
+          for _ in $(seq 30); do
+            if curl -fsS http://127.0.0.1:8080/health/live; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs gateway
+          exit 1
+      - name: Reject an unauthenticated request
+        run: |
+          status=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/anything)
+          test "$status" = 401 || { echo "expected 401, got $status"; exit 1; }

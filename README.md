@@ -234,3 +234,14 @@ stalls instead of taking the gateway down.
 The PVC is `ReadWriteOnce`, which is enough for replicas on one node. Use a `ReadWriteMany` volume when they run on
 several, since every replica must read the same key ring. Behind an ingress, set `ForwardedHeaders__Enabled=true` and
 list the pod network and ingress in `ForwardedHeaders__KnownNetworks__<n>`.
+
+## Releases
+
+Pushing a tag such as `v1.2.3` runs the tests, builds `linux/amd64` and `linux/arm64` images, publishes them to
+`ghcr.io/<owner>/auth-gateway` as `1.2.3`, `1.2` and (from 1.0) `1`, with provenance and an SBOM attached, and creates
+a GitHub release with generated notes. A tag with a suffix (`v1.2.3-rc.1`) is a prerelease. Pin images by digest in
+production. CI also fails on known vulnerable packages and on secrets anywhere in the git history.
+
+## License
+
+Apache License 2.0; see `LICENSE`.

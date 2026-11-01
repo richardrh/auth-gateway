@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build-base
+# Build on the runner's own architecture and cross-compile for TARGETARCH, so arm64 images are not built under emulation.
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build-base
 ARG TARGETARCH
 WORKDIR /src
 
@@ -24,6 +25,7 @@ RUN architecture="$TARGETARCH"; [ "$architecture" != "amd64" ] || architecture="
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS jit
 LABEL org.opencontainers.image.title="auth-gateway" \
+      org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.description="Microsoft Entra authentication gateway: signs people and programs in and forwards requests with a short-lived signed identity assertion."
 WORKDIR /app
 ENV DOTNET_ENVIRONMENT=Production \
