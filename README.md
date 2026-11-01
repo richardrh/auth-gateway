@@ -44,6 +44,47 @@ browser routes get one assigned.
 (`AuthenticatedProxy`) in front of one cluster. `DevelopmentAuth` only works in the Development environment; real
 deployments use the `AzureAdWeb` and `AzureAdApi` settings below.
 
+### Quick start on Kubernetes
+
+The same trial on a throwaway cluster, with the gateway and the demo backend as pods. It needs Docker (or Podman), `kubectl` and
+a local cluster tool such as [k3d](https://k3d.io) or [kind](https://kind.sigs.k8s.io). Run it only on a cluster you
+can throw away: `examples/kubernetes` uses a fixed username and password.
+
+```bash
+# 1. Build the two images
+docker build --target final -t auth-gateway:local .
+docker build --target demo-backend -t auth-gateway-demo-backend:local .
+
+# 2. A throwaway cluster that has both images (k3d shown; kind: kind load docker-image <image>...)
+k3d cluster create auth-gateway-demo
+k3d image import auth-gateway:local auth-gateway-demo-backend:local -c auth-gateway-demo
+kubectl config current-context        # must name the throwaway cluster before you continue
+
+# 3. Deploy and wait
+kubectl apply -k examples/kubernetes
+kubectl -n auth-gateway-demo wait --for=condition=Available deploy --all --timeout=120s
+
+# 4. Reach the gateway on http://localhost:8080 (leave this running, use another terminal)
+kubectl -n auth-gateway-demo port-forward svc/auth-gateway 8080:80
+
+curl -u development-user:dev-password http://localhost:8080/app/hello
+curl -u development-user:dev-password -H "Request-ID: $(uuidgen)" http://localhost:8080/api/hello
+curl -i http://localhost:8080/app/hello        # no credentials: 401
+
+# Clean up
+k3d cluster delete auth-gateway-demo
+```
+
+The replies are the same as in the local run above. [`examples/kubernetes`](examples/kubernetes) is a kustomize overlay
+on [`deploy/kubernetes`](deploy/kubernetes): it runs the gateway in Development with the fixed credentials, swaps in the
+routes from `examples/quickstart.json` pointing at the `demo-backend` Service, and drops the key-protection certificate
+that Production requires. A real deployment starts from `deploy/kubernetes` instead; see
+[Kubernetes manifests](#kubernetes-manifests).
+
+With Podman, k3d cannot import images by name. Tag each image `docker.io/library/<name>:local`, then run
+`podman save -o <name>.tar docker.io/library/<name>:local` and `k3d image import <name>.tar -c auth-gateway-demo` once
+per image. Importing both from one archive pointed both names at the first image.
+
 ## Gateway endpoints
 
 | Path | Purpose |

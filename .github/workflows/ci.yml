@@ -59,11 +59,30 @@ jobs:
       - name: Scan the full history
         run: ./gitleaks git --no-banner --redact .
 
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Render the production base and the quick-start overlay
+        run: |
+          kubectl kustomize deploy/kubernetes > base.yaml
+          kubectl kustomize examples/kubernetes > demo.yaml
+      - name: The base requires the key-protection certificate and the demo overlay drops all of it
+        run: |
+          grep -q 'DataProtection__CertificateFile' base.yaml
+          grep -q 'secretName: auth-gateway-key-protection' base.yaml
+          ! grep -q -e 'key-protection' -e 'DataProtection__Certificate' demo.yaml
+      - name: The overlay keeps the gateway's profile and key volumes mounted
+        run: |
+          grep -q 'mountPath: /etc/auth-gateway' demo.yaml
+          grep -q 'mountPath: /var/lib/auth-gateway/keys' demo.yaml
+
   image:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: docker build --target final --tag auth-gateway:ci .
+      - run: docker build --target demo-backend --tag auth-gateway-demo-backend:ci .
       - name: Start in Development and wait for the health endpoint
         run: |
           docker run --detach --name gateway --publish 8080:8080 \

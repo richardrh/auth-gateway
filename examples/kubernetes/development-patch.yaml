@@ -1,0 +1,21 @@
+# Development mode keeps its session keys in memory, so the key-protection certificate and its Secret are not needed.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-gateway
+spec:
+  template:
+    spec:
+      containers:
+        - name: auth-gateway
+          env:
+            - name: DataProtection__CertificateFile
+              $patch: delete
+            - name: DataProtection__CertificatePassword
+              $patch: delete
+          volumeMounts:
+            - mountPath: /etc/key-protection
+              $patch: delete
+      volumes:
+        - name: key-protection
+          $patch: delete

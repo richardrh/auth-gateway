@@ -1,0 +1,10 @@
+{
+  "Gateway": { "AssertionHeader": "Identity-Assertion", "Home": "/app" },
+  "ReverseProxy": {
+    "Routes": {
+      "app-route": { "ClusterId": "backend", "AuthorizationPolicy": "BrowserUser", "Match": { "Path": "/app/{**catch-all}" } },
+      "api-route": { "ClusterId": "backend", "AuthorizationPolicy": "AuthenticatedProxy", "Match": { "Path": "/api/{**catch-all}" } }
+    },
+    "Clusters": { "backend": { "Destinations": { "main": { "Address": "http://demo-backend/" } } } }
+  }
+}

@@ -38,5 +38,19 @@ COPY --from=jit-build --chown=app:app /app/jit/ ./
 USER app
 ENTRYPOINT ["dotnet", "AuthGateway.dll"]
 
+# The quick start's demo backend (--target demo-backend). It echoes each request and is not part of the release image.
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS demo-backend-build
+WORKDIR /src
+COPY src/backend-test/ src/backend-test/
+RUN dotnet publish src/backend-test/Backend.csproj --configuration Release --output /app/backend
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS demo-backend
+WORKDIR /app
+ENV ASPNETCORE_URLS=http://0.0.0.0:8080
+EXPOSE 8080
+COPY --from=demo-backend-build --chown=app:app /app/backend/ ./
+USER app
+ENTRYPOINT ["dotnet", "Backend.dll"]
+
 # The unqualified build output is the JIT/ReadyToRun image.
 FROM jit AS final
