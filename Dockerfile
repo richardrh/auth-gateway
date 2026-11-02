@@ -34,7 +34,8 @@ ENV DOTNET_ENVIRONMENT=Production \
     Kestrel__Endpoints__Grpc__Url=http://0.0.0.0:8082 \
     Kestrel__Endpoints__Grpc__Protocols=Http2
 EXPOSE 8080 8082
-COPY --from=jit-build --chown=app:app /app/jit/ ./
+# Root-owned: the process never needs to write its own files.
+COPY --from=jit-build /app/jit/ ./
 USER app
 ENTRYPOINT ["dotnet", "AuthGateway.dll"]
 
@@ -48,7 +49,7 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS demo-backend
 WORKDIR /app
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080
 EXPOSE 8080
-COPY --from=demo-backend-build --chown=app:app /app/backend/ ./
+COPY --from=demo-backend-build /app/backend/ ./
 USER app
 ENTRYPOINT ["dotnet", "Backend.dll"]
 

@@ -4,5 +4,5 @@ title = "auth-gateway"
 useDefault = true
 
 [allowlist]
-description = "The README quick start uses a fixed, public development-only credential."
-regexes = ['''development-user:dev-password''']
+description = "The quick starts use fixed, public development-only credentials: the README's Basic password and the demo overlay's assertion key (its backend does not verify assertions)."
+regexes = ['''development-user:dev-password''', '''ZGVtby1vbmx5LWtleS1ub3QtZm9yLXByb2R1Y3Rpb24tdXNlIQ==''']

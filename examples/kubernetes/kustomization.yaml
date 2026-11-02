@@ -38,3 +38,5 @@ secretGenerator:
   - name: auth-gateway-secrets
     literals:
       - DevelopmentAuth__Password=dev-password
+      # Demo only: the demo backend does not verify assertions. The image ships no key, so one must be supplied.
+      - IdentityAssertion__Keys__primary=ZGVtby1vbmx5LWtleS1ub3QtZm9yLXByb2R1Y3Rpb24tdXNlIQ==

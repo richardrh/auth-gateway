@@ -173,19 +173,21 @@ Map the recorded values to runtime configuration:
 | `AzureAdApi:Audience` | `<api-app-id-uri>` |
 | `AzureAdApi:RequiredScope` | `access_as_user` |
 
-The Kubernetes base manifest reads these keys from the externally created
-`auth-gateway-entra` Secret:
+The Kubernetes base manifest loads the `auth-gateway-env` ConfigMap and the `auth-gateway-secrets` Secret as
+environment variables, named `Section__Key`. Plain settings go in the ConfigMap; the client secret and the signing
+key go in the Secret:
 
 ```bash
-kubectl create secret generic auth-gateway-entra \
-  --from-literal=web-tenant-id='<tenant-id>' \
-  --from-literal=web-client-id='<web-client-id>' \
-  --from-literal=web-client-secret='<web-client-secret-value>' \
-  --from-literal=api-tenant-id='<tenant-id>' \
-  --from-literal=api-client-id='<api-client-id>' \
-  --from-literal=api-audience='<api-app-id-uri>' \
-  --from-literal=api-required-scope='access_as_user' \
-  --from-literal=identity-assertion-key='<base64-encoded-32-byte-or-longer-key>'
+kubectl create configmap auth-gateway-env \
+  --from-literal=AzureAdWeb__TenantId='<tenant-id>' \
+  --from-literal=AzureAdWeb__ClientId='<web-client-id>' \
+  --from-literal=AzureAdApi__TenantId='<tenant-id>' \
+  --from-literal=AzureAdApi__ClientId='<api-client-id>' \
+  --from-literal=AzureAdApi__Audience='<api-app-id-uri>' \
+  --from-literal=AzureAdApi__RequiredScope='access_as_user'
+kubectl create secret generic auth-gateway-secrets \
+  --from-literal=AzureAdWeb__ClientSecret='<web-client-secret-value>' \
+  --from-literal=IdentityAssertion__Keys__primary="$(openssl rand -base64 32)"
 ```
 
 This command is an interface example, not a production secret-management

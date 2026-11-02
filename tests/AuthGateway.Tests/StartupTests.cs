@@ -27,6 +27,22 @@ public sealed class StartupTests
         }
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("Default")]
+    [InlineData("RequireAdmin")]
+    public void EveryRouteMustNameAGatewayPolicy(string? policy)
+    {
+        string message = Failure(new Gateway(s =>
+        {
+            s["ReverseProxy:Routes:loose:ClusterId"] = "echo";
+            s["ReverseProxy:Routes:loose:Match:Path"] = "/loose/{**rest}";
+            s["ReverseProxy:Routes:loose:AuthorizationPolicy"] = policy;
+        }));
+
+        Assert.Contains("ReverseProxy:Routes:loose:AuthorizationPolicy", message);
+    }
+
     [Fact]
     public void OutsideDevelopmentKeysPathMustBeAbsolute()
     {

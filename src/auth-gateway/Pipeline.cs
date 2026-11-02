@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Antiforgery;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Primitives;
 using Yarp.ReverseProxy.Model;
 
@@ -69,12 +70,13 @@ internal static class Pipeline
     }
 
     /// <summary>
-    /// Cookie sessions must prove intent on every mutation: <c>/auth/logout</c> and any authenticated proxy
-    /// route. Bearer tokens are not ambient credentials, so they are exempt.
+    /// Sessions must prove intent on every mutation: <c>/auth/logout</c> and any authenticated proxy route. Runs
+    /// after authorization, so <see cref="HttpContext.User"/> is whoever the endpoint's policy authenticated.
     /// </summary>
-    public static async Task Csrf(HttpContext context, RequestDelegate next, IAntiforgery antiforgery, GatewayOptions gateway)
+    /// <param name="cookieSessions">False when development auth replaces the cookie scheme.</param>
+    public static async Task Csrf(HttpContext context, RequestDelegate next, IAntiforgery antiforgery, GatewayOptions gateway, bool cookieSessions)
     {
-        if (!RequiresValidation(context))
+        if (!RequiresValidation(context, cookieSessions))
         {
             await next(context);
             return;
@@ -102,16 +104,25 @@ internal static class Pipeline
         await next(context);
     }
 
-    public static bool RequiresValidation(HttpContext context)
+    public static bool RequiresValidation(HttpContext context, bool cookieSessions)
     {
         bool mutation = HttpMethods.IsPost(context.Request.Method) || HttpMethods.IsPut(context.Request.Method)
             || HttpMethods.IsPatch(context.Request.Method) || HttpMethods.IsDelete(context.Request.Method);
-        if (!mutation || GatewayAuth.HasBearer(context.Request) || context.User.Identity?.IsAuthenticated is not true)
+        if (!mutation || context.User.Identity?.IsAuthenticated is not true)
         {
             return false;
         }
 
-        return context.Request.Path.Equals("/auth/logout", StringComparison.Ordinal)
-            || (Route(context) is { } route && !Policies.Is(route.Config, Policies.Anonymous));
+        // Proxy routes and /auth/logout carry their policy as endpoint metadata; anonymous routes carry IAllowAnonymous.
+        EndpointMetadataCollection? metadata = context.GetEndpoint()?.Metadata;
+        if (metadata is null || metadata.GetMetadata<IAllowAnonymous>() is not null)
+        {
+            return false;
+        }
+
+        // A bearer token is not an ambient credential. The session cookie is, and a BrowserUser endpoint
+        // authenticates it whatever else the request carries, so a bearer header does not exempt it there.
+        bool browser = string.Equals(metadata.GetMetadata<IAuthorizeData>()?.Policy, Policies.BrowserUser, StringComparison.OrdinalIgnoreCase);
+        return !GatewayAuth.HasBearer(context.Request) || (browser && cookieSessions);
     }
 }
