@@ -69,6 +69,18 @@ public sealed class CsrfTests
         Assert.Equal(HttpStatusCode.BadRequest, withToken.StatusCode);
         Assert.Equal("local", (await gateway.Log.RecordAsync(withToken.Rid())).GetProperty("outcome").GetString());
     }
+
+    // Routing matches these to the logout endpoint; the CSRF decision follows the endpoint, not the literal path.
+    [Theory]
+    [InlineData("/AUTH/LOGOUT")]
+    [InlineData("/auth/logout/")]
+    public async Task LogoutPathVariantsStillRequireCsrf(string path)
+    {
+        HttpResponseMessage response = await client.SendAsync(Make(HttpMethod.Post, path, Gateway.Basic));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("csrf_invalid", (await gateway.Log.RecordAsync(response.Rid())).GetProperty("outcome").GetString());
+    }
 }
 
 public sealed class ListenerTests

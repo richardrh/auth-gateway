@@ -23,6 +23,22 @@ public static class Policies
 
     /// <summary>Programs get a 401 instead of a sign-in redirect, and must send their own Request-ID.</summary>
     public static bool IsProgram(RouteConfig route) => Is(route, AuthenticatedProxy) || Is(route, AuthenticatedGrpcProxy);
+
+    /// <summary>
+    /// Every route in <c>ReverseProxy:Routes</c> must name one of the policies above. A route without one would fall
+    /// to the default policy, and YARP's own <c>Default</c> and <c>Anonymous</c> names bypass the scope check.
+    /// </summary>
+    public static void Validate(IConfigurationSection routes)
+    {
+        string[] names = [Anonymous, BrowserUser, AuthenticatedProxy, AuthenticatedGrpcProxy];
+        foreach (IConfigurationSection route in routes.GetChildren())
+        {
+            if (route["AuthorizationPolicy"] is not { } policy || !names.Contains(policy, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException($"Invalid configuration: ReverseProxy:Routes:{route.Key}:AuthorizationPolicy must be one of {string.Join(", ", names)}.");
+            }
+        }
+    }
 }
 
 /// <summary>Deployment settings from the <c>Gateway</c> configuration section. Every setting is optional.</summary>

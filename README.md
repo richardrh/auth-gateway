@@ -10,8 +10,10 @@ Request flow:
 2. Optional forwarded headers, routing, listener check (`Gateway:GrpcPort`), Request-ID check for program routes.
 3. Authentication: the session cookie `__Host-auth-gateway` (Entra OIDC, 8 h sliding) or an Entra bearer
    access token carrying `AzureAdApi:RequiredScope`.
-4. CSRF validation for cookie sessions on POST/PUT/PATCH/DELETE (bearer requests are exempt).
-5. Route authorization policy, then YARP strips caller headers and adds the assertion.
+4. Route authorization policy.
+5. CSRF validation for cookie sessions on POST/PUT/PATCH/DELETE. Bearer requests are exempt, except on
+   `BrowserUser` routes, which authenticate the cookie whatever else the request carries. Then YARP strips caller
+   headers and adds the assertion.
 6. One JSON access record is written to stdout.
 
 ## Quick start
@@ -27,6 +29,7 @@ ASPNETCORE_ENVIRONMENT=Development \
 DevelopmentAuth__Enabled=true DevelopmentAuth__Password=dev-password \
 DevelopmentAuth__TenantId=00000000-0000-0000-0000-000000000001 \
 DevelopmentAuth__ObjectId=00000000-0000-0000-0000-000000000002 \
+IdentityAssertion__Keys__primary=$(openssl rand -base64 32) \
 GATEWAY_CONFIG_FILE=$PWD/examples/quickstart.json \
 dotnet run --project src/auth-gateway
 
@@ -39,7 +42,8 @@ The backend's reply lists its request headers. `Authorization` is gone, and `Ide
 short-lived signed token that tells the backend who called. Programs must send a `Request-ID` (the second call);
 browser routes get one assigned.
 
-`appsettings.Development.json` supplies an assertion audience and key for local use. The routes live in
+`appsettings.Development.json` supplies an assertion audience for local use; the signing key is never shipped, so
+every run supplies one (the demo backend does not verify it). The routes live in
 [`examples/quickstart.json`](examples/quickstart.json): one browser route (`BrowserUser`) and one API route
 (`AuthenticatedProxy`) in front of one cluster. `DevelopmentAuth` only works in the Development environment; real
 deployments use the `AzureAdWeb` and `AzureAdApi` settings below.
@@ -99,7 +103,8 @@ per image. Importing both from one archive pointed both names at the first image
 
 ## Route policies and metadata
 
-Each YARP route sets `AuthorizationPolicy` to one of:
+Each YARP route sets `AuthorizationPolicy` to one of the names below; the gateway refuses to start on a route
+without one (or with YARP's own `Default`), since that would skip the scope check.
 
 | Policy | Accepts | Unauthenticated |
 | --- | --- | --- |
@@ -130,8 +135,9 @@ used when none remain. A caller without a GUID `tid` and `oid` gets 403. Lifetim
 `IdentityAssertion:LifetimeSeconds` (1-60, default 30).
 
 Key rotation: the header names the key in `kid`. Backends accept every key in `IdentityAssertion:Keys`;
-the gateway signs with `IdentityAssertion:CurrentKeyId`. Add the new key to backends first, then switch
-`CurrentKeyId`, then remove the old key. Keys are base64 and at least 32 bytes.
+the gateway signs with `IdentityAssertion:CurrentKeyId` and reads both at startup, so a change takes a restart
+(a rollout, on Kubernetes). Add the new key to backends first, then switch `CurrentKeyId` and restart the gateway,
+then remove the old key from backends. Keys are base64 and at least 32 bytes.
 
 ## Configuration
 

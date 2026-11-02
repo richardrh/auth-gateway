@@ -98,4 +98,19 @@ public sealed class SignInTests(Rig rig)
         Assert.NotEqual(HttpStatusCode.OK, response.StatusCode);
         Assert.False(rig.Backend.Saw("/app/csrf-post"));
     }
+
+    // A BrowserUser route authenticates the cookie whatever else the request carries, so a stray bearer header
+    // must not exempt the session from the CSRF check.
+    [Fact]
+    public async Task ABearerHeaderBesideTheSessionCookieDoesNotSkipTheCsrfCheck()
+    {
+        using Browser browser = rig.NewBrowser();
+        _ = await browser.SignInAsync("/app/csrf-bearer");
+
+        using HttpResponseMessage response = await browser.SendAsync(HttpMethod.Post, new(browser.Gateway, "/app/csrf-bearer-post"), configure: request =>
+            request.Headers.TryAddWithoutValidation("Authorization", "Bearer a.b.c"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.False(rig.Backend.Saw("/app/csrf-bearer-post"));
+    }
 }

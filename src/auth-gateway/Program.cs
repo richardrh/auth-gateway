@@ -23,6 +23,7 @@ if (config["GATEWAY_CONFIG_FILE"] is { Length: > 0 } profile)
 }
 
 GatewayOptions gateway = config.GetSection(GatewayOptions.Section).Get<GatewayOptions>() ?? new();
+Policies.Validate(config.GetSection("ReverseProxy:Routes"));
 DevelopmentUser? development = DevelopmentUser.Load(config, builder.Environment);
 IConfigurationSection web = config.GetSection("AzureAdWeb");
 IConfigurationSection api = config.GetSection("AzureAdApi");
@@ -39,6 +40,10 @@ if (!isDevelopment)
     }
 
     keysEncrypted = KeyRing.Configure(dataProtection, config);
+}
+else
+{
+    KeyRing.InMemory(dataProtection);
 }
 
 bool forwarded = config.GetValue<bool>("ForwardedHeaders:Enabled");
@@ -122,14 +127,16 @@ if (development is not null)
 builder.Services.AddAuthorization(options =>
 {
     string browserScheme = development is null ? CookieAuthenticationDefaults.AuthenticationScheme : DevelopmentUser.Scheme;
-    options.FallbackPolicy = new AuthorizationPolicyBuilder(GatewayAuth.Scheme).RequireAuthenticatedUser().Build();
     options.AddPolicy(Policies.BrowserUser, policy => policy.AddAuthenticationSchemes(browserScheme).RequireAuthenticatedUser());
     // A caller with an Authorization header must hold the scope. Cookie sessions are not scoped.
-    options.AddPolicy(Policies.AuthenticatedProxy, policy => policy
-        .AddAuthenticationSchemes(GatewayAuth.Scheme)
+    AuthorizationPolicy authenticatedProxy = new AuthorizationPolicyBuilder(GatewayAuth.Scheme)
         .RequireAuthenticatedUser()
         .RequireAssertion(context => context.Resource is not HttpContext { Request.Headers.Authorization.Count: > 0 }
-            || GatewayAuth.HasScope(context.User, requiredScope)));
+            || GatewayAuth.HasScope(context.User, requiredScope))
+        .Build();
+    options.AddPolicy(Policies.AuthenticatedProxy, authenticatedProxy);
+    // Every route names a policy (Policies.Validate). An endpoint without one still gets the scope check.
+    options.DefaultPolicy = options.FallbackPolicy = authenticatedProxy;
     // The development scheme exists only when development auth is enabled; naming an unregistered scheme throws.
     string[] grpcSchemes = development is null ? [JwtBearerDefaults.AuthenticationScheme] : [JwtBearerDefaults.AuthenticationScheme, DevelopmentUser.Scheme];
     options.AddPolicy(Policies.AuthenticatedGrpcProxy, policy => policy
@@ -157,8 +164,10 @@ if (!isDevelopment)
     _ = app.UseExceptionHandler();
 }
 app.UseAuthentication();
-app.Use((context, next) => Pipeline.Csrf(context, next, context.RequestServices.GetRequiredService<IAntiforgery>(), gateway));
 app.UseAuthorization();
+// After authorization, so the principal is the one the endpoint's policy authenticated (BrowserUser routes
+// authenticate the session cookie even when an Authorization header is present).
+app.Use((context, next) => Pipeline.Csrf(context, next, context.RequestServices.GetRequiredService<IAntiforgery>(), gateway, cookieSessions: development is null));
 app.MapReverseProxy();
 
 app.MapHealthChecks("/health/live").AllowAnonymous();
