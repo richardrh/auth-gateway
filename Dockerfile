@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Build on the runner's own architecture and cross-compile for TARGETARCH, so arm64 images are not built under emulation.
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build-base
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:11.0 AS build-base
 ARG TARGETARCH
 WORKDIR /src
 
@@ -40,7 +40,7 @@ USER app
 ENTRYPOINT ["dotnet", "AuthGateway.dll"]
 
 # The quick start's demo backend (--target demo-backend). It echoes each request and is not part of the release image.
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS demo-backend-build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:11.0 AS demo-backend-build
 WORKDIR /src
 COPY src/backend-test/ src/backend-test/
 RUN dotnet publish src/backend-test/Backend.csproj --configuration Release --output /app/backend
