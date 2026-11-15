@@ -16,7 +16,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <!-- The transitive 10.0.10 has GHSA-r955-8q5j-3h83, GHSA-7hqp-7c5m-4vq6 and GHSA-c399-9853-6jmj. -->
-    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.14" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="11.0.0" />
   </ItemGroup>
 
   <ItemGroup>
